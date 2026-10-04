@@ -1,14 +1,86 @@
 # Student Task Manager Web Application
 
-A simple Student Task Manager Web Application using HTML, CSS and JavaScript.
+A single-page student productivity dashboard: plan today's tasks, separate **deep work** from **shallow work**, track daily progress, see a compact timeline of the day, and focus with a Pomodoro timer. Built with plain HTML, CSS and JavaScript on the front end and a small dependency-free Node.js backend that stores tasks in a JSON file.
 
-This project also includes:
+## Quick start
 
-- Git and GitHub commands
-- Docker containerization using Nginx
-- Jenkins commands for CI/CD
-- Kubernetes Deployment and Service
-- Ubuntu commands for running and checking the application
+Requires Node.js 18 or newer (no `npm install` needed, there are no dependencies).
+
+```bash
+cd ~/Student-Task-Manager-Web-Application
+npm start
+```
+
+Open <http://localhost:3000>. Tasks are saved to `data/tasks.json` and survive restarts.
+
+| Command | What it does |
+|---|---|
+| `npm start` | Runs the backend and serves the dashboard on port 3000 |
+| `PORT=4000 npm start` | Uses another port |
+| `npm test` | Runs the backend API tests and the dashboard logic tests |
+| `npm run build` | Copies the frontend into `dist/` as a static bundle |
+
+> **Important:** the dashboard needs the backend. Opening `index.html` directly or serving it with `python3 -m http.server` will show a "Couldn't load your tasks" message because there is no API behind it.
+
+Environment variables: `PORT` (default 3000), `HOST` (default `127.0.0.1`; use `0.0.0.0` to expose it on your network), `DATA_FILE` (default `data/tasks.json`).
+
+## Features
+
+- **One dashboard page**, no separate pages or navigation.
+- **Summary cards** (Pending, Remaining, Deep work, Shallow work), all calculated from the real task data.
+- **Daily progress bar** with percentage, "x of y completed" and a short message. Safe when there are no tasks.
+- **Task list** grouped into deep work (first) and shallow work, sorted by completion, priority and scheduled time. Check to complete, check again to reopen, edit, delete (with Undo).
+- **Filters**: All, Deep work, Shallow work, Pending, Completed, each with a live count.
+- **Add / edit task dialog** with name, description, type, priority, duration, optional time and date. Validates input, blocks double submits, closes with Cancel, X, backdrop click or Escape.
+- **Today timeline**: scheduled tasks in time order with start and end times, a "now" marker, and an "Anytime" list for tasks without a time.
+- **Pomodoro timer** (collapsible): Focus 25 min, Short break 5 min, Long break 15 min after four focus sessions. Start, pause, reset, session dots, optional "Working on" deep work task. Shows the countdown in the browser tab title and plays a short beep when a session ends.
+- **Day switcher** (the arrows beside the date) to plan ahead or look back on the same page.
+- **Responsive**: 4 summary cards on desktop, 2 on tablet and phone; task list before the timeline on small screens; floating Add task button on phones.
+
+## Project structure
+
+```text
+Student-Task-Manager-Web-Application/
+├── server.js            Backend: REST API, JSON storage, static file server
+├── index.html           Dashboard markup (header, cards, lists, dialog)
+├── style.css            Design system and responsive layout
+├── script.js            Dashboard: state, rendering, dialog, actions
+├── js/
+│   ├── api.js           fetch wrapper for the REST API
+│   ├── dates.js         date/time formatting helpers
+│   ├── stats.js         summary, progress, sorting, filters, timeline (pure functions)
+│   └── pomodoro.js      Pomodoro state machine (no DOM code)
+├── test/                API tests and logic tests (node:test)
+├── data/tasks.json      Created on first run (git-ignored)
+├── dist/                Static frontend bundle from `npm run build`
+├── Dockerfile
+└── k8s/                 deployment.yaml, service.yaml, pvc.yaml
+```
+
+## REST API
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/tasks` | List all tasks, or `?date=YYYY-MM-DD` for one day |
+| POST | `/api/tasks` | Create a task |
+| GET | `/api/tasks/:id` | Get one task |
+| PATCH | `/api/tasks/:id` | Update any fields, including `completed` |
+| DELETE | `/api/tasks/:id` | Delete a task |
+
+Task fields: `title` (required, max 120), `description` (max 500), `type` (`deep` or `shallow`), `priority` (`high`, `medium`, `low`), `duration` (1 to 600 minutes), `time` (`HH:MM`, optional), `date` (`YYYY-MM-DD`), `completed`. Invalid input returns `400` with a `fields` object of per-field messages.
+
+## Known limitations
+
+- Storage is a single JSON file. That is fine for one person on one machine, but not for many users or many server copies. There is no login: anyone who can reach the server can edit the tasks, which is why it listens on `127.0.0.1` by default.
+- The Pomodoro timer lives in the browser tab: refreshing the page resets it.
+- The greeting name is set in one place: `USER_NAME` at the top of `script.js`.
+- Inter is loaded from Google Fonts. Offline, the page falls back to the system font.
+
+---
+
+# DevOps notes (Git, Docker, Jenkins, Kubernetes)
+
+The sections below are the original command reference. The application is now a Node.js server rather than a static Nginx site, so the Docker and Kubernetes sections have these differences: the container runs `node server.js` on port 80, tasks are stored in `/app/data`, and the Kubernetes deployment uses one replica plus a `PersistentVolumeClaim` (`kubectl apply -f k8s/` applies all three files). Where the text below says "Nginx" or "static", read "Node.js server".
 
 ---
 
@@ -97,31 +169,7 @@ sudo systemctl status jenkins
 
 # 3. Run the Web Application Locally
 
-The application is a static HTML/CSS/JavaScript application.
-
-A simple way to run it is:
-
-```bash
-cd ~/Student-Task-Manager-Web-Application
-```
-
-If Python 3 is installed:
-
-```bash
-python3 -m http.server 3000
-```
-
-Open:
-
-```text
-http://localhost:3000
-```
-
-Stop the server with:
-
-```text
-Ctrl + C
-```
+Use `npm start` and open `http://localhost:3000` (see Quick start above). `python3 -m http.server` will not work any more.
 
 ---
 
@@ -139,7 +187,7 @@ Check npm:
 npm --version
 ```
 
-Install dependencies:
+Install dependencies (there are none, this step can be skipped):
 
 ```bash
 npm install
@@ -151,7 +199,7 @@ Build the project:
 npm run build
 ```
 
-The build command copies the application files into the `dist/` directory.
+The build command copies the frontend files into the `dist/` directory.
 
 ---
 
@@ -443,7 +491,7 @@ Open the application:
 http://localhost:3000
 ```
 
-The Dockerfile uses Nginx, which listens on port `80` inside the container.
+The Dockerfile runs the Node.js server, which listens on port `80` inside the container.
 
 Therefore:
 
@@ -1257,7 +1305,7 @@ Docker uses:
 Host:3000 -> Container:80
 ```
 
-because Nginx listens on port `80` inside the container.
+because the Node.js server listens on port `80` inside the container.
 
 Kubernetes uses:
 
@@ -1348,7 +1396,7 @@ minikube service task-manager-service --url
 - CSS
 - JavaScript
 - Node.js / npm
-- Nginx
+- Node.js HTTP server
 - Docker
 - Jenkins
 - Kubernetes
